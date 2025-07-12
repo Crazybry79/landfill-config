@@ -1,0 +1,85 @@
+{
+  "zones": [
+    {
+      "id": "wood",
+      "name": "Wood",
+      "destination": {
+        "lat": 26.79335,
+        "lng": -81.967316
+      },
+      "prompts": []
+    },
+    {
+      "id": "yardwaste",
+      "name": "Yardwaste",
+      "destination": {
+        "lat": 26.792585,
+        "lng": -81.968235
+      },
+      "prompts": []
+    },
+    {
+      "id": "concrete",
+      "name": "Concrete",
+      "destination": {
+        "lat": 26.793577,
+        "lng": -81.967029
+      },
+      "prompts": []
+    },
+    {
+      "id": "dirt",
+      "name": "Dirt",
+      "destination": {
+        "lat": 26.792798,
+        "lng": -81.968287
+      },
+      "prompts": []
+    },
+    {
+      "id": "northportdirt",
+      "name": "Northportdirt",
+      "destination": {
+        "lat": 26.792814,
+        "lng": -81.968268
+      },
+      "prompts": []
+    },
+    {
+      "id": "shell",
+      "name": "Shell",
+      "destination": {
+        "lat": 26.792778,
+        "lng": -81.968439
+      },
+      "prompts": []
+    },
+    {
+      "id": "tile",
+      "name": "Tile",
+      "destination": {
+        "lat": 26.793342,
+        "lng": -81.967319
+      },
+      "prompts": []
+    },
+    {
+      "id": "tires",
+      "name": "Tires",
+      "destination": {
+        "lat": 26.793258,
+        "lng": -81.967427
+      },
+      "prompts": []
+    },
+    {
+      "id": "whitegoods",
+      "name": "Whitegoods",
+      "destination": {
+        "lat": 26.793376,
+        "lng": -81.967119
+      },
+      "prompts": []
+    }
+  ]
+}
