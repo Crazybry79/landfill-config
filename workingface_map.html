@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Working Face Navigation</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+  <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
+
+  <style>
+    html, body { height: 100%; margin: 0; font-family: sans-serif; }
+    #banner { background: #004225; color: #fff; text-align: center; padding: 10px; font-size: 20px; user-select: none; }
+    #tap-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.75); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 10000; color: #fff; text-align: center; }
+    #tap-overlay p { font-size: 26px; font-weight: 700; margin: 18px 0 0; }
+    .pulse { width: 90px; height: 90px; border: 5px solid #fff; border-radius: 50%; animation: pulse 1.3s ease-out infinite; }
+    @keyframes pulse { 0% { transform: scale(.4); opacity: 1; } 100% { transform: scale(1.8); opacity: 0; } }
+    #sign-img, #logo-img { position: absolute; width: 90px; height: 90px; z-index: 9999; box-shadow: 0 4px 12px rgba(0,0,0,.25); }
+    #sign-img { top: 100px; right: 10px; display: none; }
+    #logo-img { top: 100px; left: 10px; }
+    #fms-container { position: absolute; bottom: 10px; left: 10px; z-index: 9999; text-align: center; color: #555; font-size: 12px; }
+    #fms-container img { width: 90px; height: auto; margin-top: 2px; box-shadow: 0 4px 12px rgba(0,0,0,.15); }
+    #speed-sign { position: absolute; bottom: 10px; right: 10px; width: 90px; height: auto; z-index: 9999; box-shadow: 0 4px 12px rgba(0,0,0,.15); }
+    #map { position: absolute; top: 90px; bottom: 0; width: 100%; }
+    #flash-img { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: 90vw; max-height: 90vh; display: none; z-index: 10001; box-shadow: 0 8px 24px rgba(0,0,0,.45); }
+    #video-keepawake { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+  </style>
+</head>
+<body>
+  <div id="banner">Working-Face Navigation</div>
+  <div id="tap-overlay">
+    <div class="pulse"></div>
+    <p>Tap anywhere to enable<br>voice navigation</p>
+  </div>
+  <img id="sign-img" alt="Sign" src="" />
+  <img id="logo-img" alt="County logo" src="Charlotte County logo.png" />
+  <div id="fms-container">powered by<br><img src="FMS logo.png" alt="FMS" /></div>
+  <img id="speed-sign" src="13mph speed limit.png" alt="Speed" />
+  <img id="flash-img" src="" alt="Warning" />
+  <audio id="siren" src="Police Siren.mp3" preload="auto"></audio>
+  <div id="map"></div>
+  <video id="video-keepawake" autoplay muted loop playsinline>
+    <source src="data:video/mp4;base64,AAAAHGZ0eXBNNA..." type="video/mp4" />
+  </video>
+
+  <script>
+    const preloadedSigns = [
+      'Stop_sign.png',
+      'Traffic-Sign-Caution-W1-1R-turn-right-arrow.png',
+      'Traffic-Sign-Caution-W1-1L-turn-left-arrow.png',
+      'no right turn.png',
+      'no left turn.png',
+      'one way.png',
+      'Wrong Way Sign.png',
+      'U turn.png'
+    ];
+    preloadedSigns.forEach(src => { const img = new Image(); img.src = src; });
+  </script>
+
+  <script>
+    mapboxgl.accessToken = 'pk.eyJ1IjoiY3Jhenlicnk3OSIsImEiOiJjbWNja2o3ZDcwYTZjMmtvbHU1bTJ1N3hxIn0.90ggr3zVPJeGQv9xG0PvSQ';
+    const map = new mapboxgl.Map({ container: 'map', style: 'mapbox://styles/mapbox/streets-v12', center: [-81.96775, 26.799111], zoom: 15 });
+
+    map.on('load', () => {
+      map.addSource('route', {
+        type: 'geojson',
+        data: 'workingface.geojson'
+      });
+      map.addLayer({
+        id: 'route',
+        type: 'line',
+        source: 'route',
+        paint: {
+          'line-color': '#0074D9',
+          'line-width': 6
+        }
+      });
+      fetch('workingface.geojson').then(r => r.json()).then(d => {
+        const b = new mapboxgl.LngLatBounds();
+        d.features[0].geometry.coordinates.forEach(c => b.extend(c));
+        map.fitBounds(b, { padding: 40 });
+      });
+
+      navigator.geolocation.watchPosition(pos => {
+        const { longitude, latitude, speed = 0, heading = null } = pos.coords;
+        const lngLat = [longitude, latitude];
+
+        if (!userMarker) {
+          const el = document.createElement('div');
+          el.style.cssText = 'width:16px;height:16px;border-radius:50%;background:#4285F4;border:2px solid #fff;box-shadow:0 0 10px rgba(66,133,244,.5)';
+          userMarker = new mapboxgl.Marker(el).setLngLat(lngLat).addTo(map);
+        } else {
+          userMarker.setLngLat(lngLat);
+        }
+
+        const mph = speed * 2.23694, ZOOM_NEAR = 18, ZOOM_FAR = 16, MAX_MPH = 40;
+        const zoom = ZOOM_NEAR - (ZOOM_NEAR - ZOOM_FAR) * Math.min(mph, MAX_MPH) / MAX_MPH;
+        let bearing = map.getBearing();
+        if (heading !== null && speed > 2) bearing = heading;
+        map.easeTo({ center: lngLat, zoom, bearing, pitch: 45, duration: 300 });
+
+        prompts.forEach((p, i) => {
+          if (spoken.has(i)) return;
+          const dist = getDistance(latitude, longitude, p.lat, p.lng);
+          if (dist < 50) {
+            if (i === 5 && !spoken.has(2)) return;
+            if (i === 6 && !spoken.has(5)) return;
+            if (i === 8 && !spoken.has(7)) return;
+            spoken.add(i);
+            if (p.message) {
+              if (audioUnlocked) speak(p.message);
+              else missedPrompt ??= p.message;
+            }
+            if (p.sign) {
+              const signs = Array.isArray(p.sign) ? p.sign : [p.sign];
+              signs.forEach((s, index) => setTimeout(() => showSign(s), index * 150));
+            }
+            if (p.trigger) {
+              flashWarning(['Wrong Way Sign.png', 'U turn.png']);
+            }
+          }
+        });
+      }, e => console.warn('GPS error', e), { enableHighAccuracy: true });
+    });
+
+    let userMarker;
+    let audioUnlocked = false;
+    let missedPrompt = null;
+    const spoken = new Set();
+
+    document.addEventListener('click', () => {
+      if (audioUnlocked) return;
+      audioUnlocked = true;
+      document.getElementById('tap-overlay').style.display = 'none';
+      if (missedPrompt) { speak(missedPrompt); missedPrompt = null; }
+      speak(' ');
+      document.getElementById('video-keepawake').play();
+    }, { once: true });
+
+    function speak(msg) { if (msg) speechSynthesis.speak(new SpeechSynthesisUtterance(msg)); }
+    function toRad(d) { return d * Math.PI / 180; }
+    function getDistance(a, b, c, d) {
+      const R = 6371e3, φ1 = toRad(a), φ2 = toRad(c), Δφ = toRad(c - a), Δλ = toRad(d - b);
+      const x = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
+      return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+    }
+    function showSign(dir) {
+      const img = document.getElementById('sign-img');
+      img.src = dir;
+      img.style.display = 'block';
+      setTimeout(() => img.style.display = 'none', 12000);
+    }
+    function flashWarning(signs, cycles = 2) {
+      const img = document.getElementById('flash-img');
+      const siren = document.getElementById('siren');
+      if (audioUnlocked) siren.play().catch(() => { });
+      let idx = 0;
+      const interval = setInterval(() => {
+        img.src = signs[idx % signs.length];
+        img.style.display = 'block';
+        setTimeout(() => img.style.display = 'none', 2900);
+        idx++;
+        if (idx >= signs.length * cycles) {
+          clearInterval(interval);
+          siren.pause();
+          siren.currentTime = 0;
+        }
+      }, 3000);
+    }
+
+    const prompts = [
+      { lat: 26.798706, lng: -81.968804, message: "Welcome to the Charlotte County Landfill. I will give you directions to the Working Face Zone. Follow this road for 1.8 miles." },
+      { lat: 26.794570, lng: -81.964640, message: "Stop at stop sign. Engage four-wheel drive. Turn right and continue up the hill.", sign: ['Stop_sign.png', 'Traffic-Sign-Caution-W1-1R-turn-right-arrow.png'] },
+      { lat: 26.796050, lng: -81.962710, message: "In 100 feet, at the intersection, turn right. Continue between the road cones to the working face.", sign: 'Traffic-Sign-Caution-W1-1R-turn-right-arrow.png' },
+      { lat: 26.794100, lng: -81.960820, message: "Proceed to the stop sign. Wait at the stop sign until directed by the county worker.", sign: 'one way.png' },
+      { lat: 26.794030, lng: -81.959670, message: "Stop at the stop sign. Ensure four-wheel drive is engaged. Do not proceed until directed. Garbage, trash, and debris only. Tell the worker if you have any tires.", sign: 'Stop_sign.png' },
+      { lat: 26.795110, lng: -81.964070, message: "Continue straight down the shell road to exit.", sign: ['one way.png', 'no left turn.png'] },
+      { lat: 26.793940, lng: -81.964620, message: "WARNING. You are going the wrong way. Turn around immediately.", trigger: true },
+      { lat: 26.791720, lng: -81.969970, message: "At stop sign, turn right.", sign: 'Traffic-Sign-Caution-W1-1R-turn-right-arrow.png' },
+      { lat: 26.798977, lng: -81.967964, message: "Thank you for visiting the Charlotte County Landfill. Please let the scale-house attendant know if my directions helped you." }
+    ];
+  </script>
+</body>
+</html>
+

@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Yard-Waste Navigation</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+  <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; }
+    #banner { background: #004225; color: white; text-align: center; padding: 10px; font-size: 20px; }
+
+    #tap-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,.75);
+      display: flex; flex-direction: column; justify-content: center; align-items: center;
+      z-index: 10000; color: white; font-family: sans-serif; text-align: center;
+    }
+    #tap-overlay p { font-size: 26px; font-weight: 700; margin: 18px 0 0; }
+    .pulse {
+      width: 90px; height: 90px; border: 5px solid white; border-radius: 50%;
+      animation: pulse 1.3s ease-out infinite;
+    }
+    @keyframes pulse {
+      0% { transform: scale(0.4); opacity: 1; }
+      100% { transform: scale(1.8); opacity: 0; }
+    }
+
+    #sign-img, #logo-img { position: absolute; width: 90px; height: 90px; z-index: 9999; }
+    #sign-img { top: 100px; right: 10px; display: none; box-shadow: 0 4px 12px rgba(0,0,0,.25); }
+    #logo-img { top: 100px; left: 10px; box-shadow: 0 4px 12px rgba(0,0,0,.25); }
+
+    #fms-container {
+      position: absolute; bottom: 10px; left: 10px; z-index: 9999; text-align: center;
+      color: #555; font-size: 12px; font-family: sans-serif;
+    }
+    #fms-container img {
+      width: 90px; height: auto; margin-top: 2px;
+      box-shadow: 0 4px 12px rgba(0,0,0,.15);
+    }
+
+    #speed-sign {
+      position: absolute; bottom: 10px; right: 10px; width: 90px; height: auto;
+      z-index: 9999; box-shadow: 0 4px 12px rgba(0,0,0,.15);
+    }
+
+    #map { position: absolute; top: 90px; bottom: 0; width: 100%; }
+
+    #video-keepawake {
+      position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="banner">Yard-Waste Navigation</div>
+  <div id="tap-overlay">
+    <div class="pulse"></div>
+    <p>Tap anywhere to enable<br>voice navigation</p>
+  </div>
+  <img id="sign-img" src="" alt="Sign">
+  <img id="logo-img" src="Charlotte County logo.png" alt="Charlotte County Logo">
+  <div id="fms-container">
+    powered by<br>
+    <img src="FMS logo.png" alt="FMS">
+  </div>
+  <img id="speed-sign" src="13mph speed limit.png" alt="Speed">
+  <div id="map"></div>
+  <video id="video-keepawake" autoplay muted loop playsinline>
+    <source src="data:video/mp4;base64,AAAAHGZ0eXBNNA..." type="video/mp4">
+  </video>
+  <script>
+    mapboxgl.accessToken = 'pk.eyJ1IjoiY3Jhenlicnk3OSIsImEiOiJjbWNja2o3ZDcwYTZjMmtvbHU1bTJ1N3hxIn0.90ggr3zVPJeGQv9xG0PvSQ';
+    const map = new mapboxgl.Map({
+      container: 'map',
+      style: 'mapbox://styles/mapbox/streets-v12',
+      center: [-81.96775, 26.799111],
+      zoom: 15
+    });
+
+    let userMarker, audioUnlocked = false, missedPrompt = null, triggeredPrompt9 = false;
+
+    document.addEventListener('click', () => {
+      if (audioUnlocked) return;
+      audioUnlocked = true;
+      document.getElementById('tap-overlay').style.display = 'none';
+      if (missedPrompt) { speak(missedPrompt); missedPrompt = null; }
+      speak(' ');
+      document.getElementById('video-keepawake').play();
+    }, { once: true });
+
+    function speak(msg) { if (msg) speechSynthesis.speak(new SpeechSynthesisUtterance(msg)); }
+    function toRad(d) { return d * Math.PI / 180; }
+    function getDistance(a,b,c,d) {
+      const R = 6371e3, φ1 = toRad(a), φ2 = toRad(c), Δφ = toRad(c-a), Δλ = toRad(d-b);
+      const x = Math.sin(Δφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
+      return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+    }
+    function showSign(dir) {
+      const img = document.getElementById('sign-img');
+      img.src = dir;
+      img.style.display = 'block';
+      setTimeout(() => img.style.display = 'none', 12000);
+    }
+
+    const prompts = [
+      { lat: 26.798706, lng: -81.968804, message: "Welcome to the Charlotte County Landfill. I will give you directions to the Yard Waste Zone. Follow this road for 1.2 miles" },
+      { lat: 26.788132, lng: -81.969389, message: "In 500 feet, turn left", sign: 'Traffic-Sign-Caution-W1-1L-turn-left-arrow.png' },
+      { lat: 26.788132, lng: -81.968036, message: "Turn left on tile road", sign: 'Traffic-Sign-Caution-W1-1L-turn-left-arrow.png' },
+      { lat: 26.788895, lng: -81.967830, message: "Turn right, your destination will be on the left. Yard waste only — no garbage, no tires, no metal.", sign: 'Traffic-Sign-Caution-W1-1R-turn-right-arrow.png' },
+      { lat: 26.789480, lng: -81.967150, message: "Yard waste drop off site is on your left. This area is for yard waste only. No garbage, no metal, no tires. When finished, continue towards building ahead." },
+      { lat: 26.789750, lng: -81.966060, message: "Turn right before building, follow blacktop back to main road.", sign: 'Traffic-Sign-Caution-W1-1R-turn-right-arrow.png' },
+      { lat: 26.788300, lng: -81.965900, message: "Turn left onto main road to exit. Follow road for 0.8 miles.", sign: ['Traffic-Sign-Caution-W1-1L-turn-left-arrow.png','no right turn.png'] },
+      { lat: 26.794570, lng: -81.964640, message: "At stop sign, turn left. Follow shell road for 0.7 miles.", sign: 'Traffic-Sign-Caution-W1-1L-turn-left-arrow.png' },
+      { lat: 26.795050, lng: -81.964640, message: "Turn left", sign: 'Traffic-Sign-Caution-W1-1L-turn-left-arrow.png' },
+      { lat: 26.791720, lng: -81.969970, message: "At stop sign, turn right.", sign: 'Traffic-Sign-Caution-W1-1R-turn-right-arrow.png' },
+      { lat: 26.798977, lng: -81.967964, message: "Thank you for visiting the Charlotte County Landfill. Please let the scalehouse attendant know if my directions helped you." }
+    ];
+
+    const spoken = new Set();
+
+    map.on('load', () => {
+      map.addSource('route', { type: 'geojson', data: 'yardwaste.geojson' });
+      map.addLayer({ id: 'route', type: 'line', source: 'route', paint: { 'line-color': '#0074D9', 'line-width': 6 } });
+
+      fetch('yardwaste.geojson').then(r => r.json()).then(d => {
+        const b = new mapboxgl.LngLatBounds();
+        d.features[0].geometry.coordinates.forEach(c => b.extend(c));
+        map.fitBounds(b, { padding: 40 });
+      });
+
+      map.dragRotate.disable();
+      map.touchZoomRotate.disableRotation();
+
+      navigator.geolocation.watchPosition(pos => {
+        const { longitude, latitude, speed = 0, heading = null } = pos.coords;
+        const lngLat = [longitude, latitude];
+
+        if (!userMarker) {
+          const el = document.createElement('div');
+          el.style.cssText = 'width:16px;height:16px;border-radius:50%;background:#4285F4;border:2px solid #fff;box-shadow:0 0 10px rgba(66,133,244,.5)';
+          userMarker = new mapboxgl.Marker(el).setLngLat(lngLat).addTo(map);
+        } else {
+          userMarker.setLngLat(lngLat);
+        }
+
+        const mph = speed * 2.23694, ZOOM_NEAR = 18, ZOOM_FAR = 16, MAX_MPH = 40;
+        const t = Math.min(mph, MAX_MPH) / MAX_MPH;
+        const zoom = ZOOM_NEAR - (ZOOM_NEAR - ZOOM_FAR) * t;
+
+        let bearing = map.getBearing();
+        if (heading !== null && speed > 2) bearing = heading;
+        map.easeTo({ center: lngLat, zoom, bearing, pitch: 45, duration: 300 });
+
+        prompts.forEach((p, i) => {
+          if (spoken.has(i)) return;
+          const dist = getDistance(latitude, longitude, p.lat, p.lng);
+          if (dist < 50) {
+            if (i === 10 && !spoken.has(9)) return;
+            if (audioUnlocked) speak(p.message); else missedPrompt ??= p.message;
+            spoken.add(i);
+            if (p.sign) {
+              if (Array.isArray(p.sign)) {
+                p.sign.forEach(s => setTimeout(() => showSign(s), 100));
+              } else {
+                showSign(p.sign);
+              }
+            }
+          }
+        });
+      }, e => console.warn('GPS error', e), { enableHighAccuracy: true });
+    });
+  </script>
+</body>
+</html>
